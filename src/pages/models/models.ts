@@ -7,6 +7,7 @@ export interface MarketData {
   sell: string;
   high: string;
   low: string;
+  volValue: string;
   buyChangePercent?: number;
 }
 
@@ -14,4 +15,5 @@ export type Order = 'asc' | 'desc';
 
 export interface CryptoTableProps {
   data: MarketData[];
+  alertsEnabled: boolean;
 }

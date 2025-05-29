@@ -13,6 +13,8 @@ import {
 import type { MarketData } from './models/models';
 import CryptoTable from './components/CryptoTable';
 import type { SelectChangeEvent } from '@mui/material';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
+import NotificationsOffIcon from '@mui/icons-material/NotificationsOff';
 
 const Home: React.FC = () => {
   const [data, setData] = useState<MarketData[]>([]);
@@ -20,14 +22,21 @@ const Home: React.FC = () => {
   const [intervalMinutes, setIntervalMinutes] = useState(5);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
-
+  const [timeLeft, setTimeLeft] = useState('00:00:00');
+  const [alertsEnabled, setAlertsEnabled] = useState(true);
+  const [minVolume, setMinVolume] = useState('');
+  const [confirmedMinVolume, setConfirmedMinVolume] = useState<number | null>(
+    null
+  );
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastFetchedRef = useRef<Date | null>(null);
+  const timeIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const res = await fetch(
-        'https://api.kucoin.com/api/v1/market/allTickers'
+        'https://crypto-alert-back.onrender.com/api/tickers'
       );
       const json = await res.json();
 
@@ -37,7 +46,13 @@ const Home: React.FC = () => {
         : {};
 
       const usdtPairs: MarketData[] = json.data.ticker
-        .filter((item: any) => item.symbol.endsWith('-USDT'))
+        .filter((item: any) => {
+          const endsWithUSDT = item.symbol.endsWith('-USDT');
+          const volumeOk =
+            confirmedMinVolume === null ||
+            parseFloat(item.volValue) >= confirmedMinVolume;
+          return endsWithUSDT && volumeOk;
+        })
         .map((item: any) => {
           const previous = prevData[item.symbol];
           const prevBuy = previous ? parseFloat(previous.buy) : null;
@@ -52,6 +67,7 @@ const Home: React.FC = () => {
             last: item.last,
             changeRate: item.changeRate,
             vol: item.vol,
+            volValue: item.volValue,
             buy: item.buy,
             sell: item.sell,
             high: item.high,
@@ -69,6 +85,9 @@ const Home: React.FC = () => {
 
       setData(usdtPairs); // now storing ALL filtered results
       setLastUpdated(new Date());
+      const now = new Date();
+      lastFetchedRef.current = now;
+      setLastUpdated(now);
     } catch (err) {
       console.error('Error fetching data', err);
     } finally {
@@ -93,6 +112,34 @@ const Home: React.FC = () => {
       }
     };
   }, [intervalMinutes, autoRefresh]);
+
+  useEffect(() => {
+    if (timeIntervalRef.current) clearInterval(timeIntervalRef.current);
+
+    timeIntervalRef.current = setInterval(() => {
+      if (!lastFetchedRef.current) {
+        setTimeLeft('00:00:00');
+        return;
+      }
+
+      const nextFetch =
+        lastFetchedRef.current.getTime() + intervalMinutes * 60 * 1000;
+      const now = Date.now();
+      const diff = Math.max(0, nextFetch - now); // prevent negative values
+
+      const minutes = String(Math.floor(diff / 60000)).padStart(2, '0');
+      const seconds = String(Math.floor((diff % 60000) / 1000)).padStart(
+        2,
+        '0'
+      );
+
+      setTimeLeft(`00:${minutes}:${seconds}`);
+    }, 1000);
+
+    return () => {
+      if (timeIntervalRef.current) clearInterval(timeIntervalRef.current);
+    };
+  }, [intervalMinutes]);
 
   const handleIntervalChange = (event: SelectChangeEvent<number>) => {
     setIntervalMinutes(Number(event.target.value));
@@ -129,6 +176,7 @@ const Home: React.FC = () => {
           Last updated:{' '}
           {lastUpdated ? lastUpdated.toLocaleTimeString() : 'Never'}
         </Typography>
+
         <Button
           variant="outlined"
           color="error"
@@ -136,11 +184,46 @@ const Home: React.FC = () => {
         >
           {autoRefresh ? 'Stop' : 'Start'}
         </Button>
+        <Typography variant="body2" color="text.secondary">
+          Next update in: {timeLeft}
+        </Typography>
+        <Button
+          variant="outlined"
+          color={alertsEnabled ? 'success' : 'inherit'}
+          onClick={() => setAlertsEnabled((prev) => !prev)}
+          startIcon={
+            alertsEnabled ? (
+              <NotificationsActiveIcon />
+            ) : (
+              <NotificationsOffIcon />
+            )
+          }
+        >
+          {alertsEnabled ? 'Alerts On' : 'Alerts Off'}
+        </Button>
 
+        <Box display="flex" alignItems="center" gap={1}>
+          <input
+            type="number"
+            value={minVolume}
+            placeholder="Min Vol 24h"
+            onChange={(e) => setMinVolume(e.target.value)}
+            style={{
+              padding: '6px 8px',
+              borderRadius: 4,
+              border: '1px solid #ccc',
+            }}
+          />
+          <Button
+            variant="outlined"
+            onClick={() => setConfirmedMinVolume(Number(minVolume))}
+          >
+            Confirm
+          </Button>
+        </Box>
         {loading && <CircularProgress size={20} />}
       </Box>
-
-      <CryptoTable data={data} />
+      <CryptoTable data={data} alertsEnabled={alertsEnabled} />
     </Container>
   );
 };

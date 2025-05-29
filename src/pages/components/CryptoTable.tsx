@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Table,
   TableHead,
@@ -14,8 +14,9 @@ import ArrowDropUpIcon from '@mui/icons-material/ArrowDropUp';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 
 import type { CryptoTableProps, MarketData, Order } from '../models/models';
+import { playAlertSound } from '../../helpers/system';
 
-const CryptoTable: React.FC<CryptoTableProps> = ({ data }) => {
+const CryptoTable: React.FC<CryptoTableProps> = ({ data, alertsEnabled }) => {
   const [orderBy, setOrderBy] = useState<keyof MarketData>('buyChangePercent');
   const [order, setOrder] = useState<Order>('asc'); // Start with ascending to show negatives first
   const [visibleRows, setVisibleRows] = useState(20);
@@ -52,8 +53,28 @@ const CryptoTable: React.FC<CryptoTableProps> = ({ data }) => {
     { key: 'sell', label: 'SELL' },
     { key: 'high', label: 'HIGH' },
     { key: 'low', label: 'LOW' },
+    { key: 'volValue', label: 'VOLUME 24h' },
     { key: 'vol', label: 'VOLUME' },
   ];
+
+  useEffect(() => {
+    if (alertsEnabled === false) {
+      return;
+    }
+    const topChange = sortedData[0]?.buyChangePercent;
+
+    if (typeof topChange !== 'number') return;
+
+    let level = null;
+    if (topChange <= -20) level = 4;
+    else if (topChange <= -15) level = 3;
+    else if (topChange <= -10) level = 2;
+    else if (topChange <= -5) level = 1;
+
+    if (level) {
+      playAlertSound(level);
+    }
+  }, [sortedData[0]?.buyChangePercent]);
 
   const renderBuyChange = (value?: number) => {
     if (value === undefined || value === 0) {
@@ -98,12 +119,22 @@ const CryptoTable: React.FC<CryptoTableProps> = ({ data }) => {
         <TableBody>
           {visibleData.map((item) => (
             <TableRow key={item.symbol}>
-              <TableCell>{item.symbol}</TableCell>
+              <TableCell>
+                <a
+                  href={`https://www.kucoin.com/trade/${item.symbol}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ textDecoration: 'none', color: '#1976d2' }} // optional: adds MUI blue link color
+                >
+                  {item.symbol}
+                </a>
+              </TableCell>
               <TableCell>{renderBuyChange(item.buyChangePercent)}</TableCell>
               <TableCell>{item.buy}</TableCell>
               <TableCell>{item.sell}</TableCell>
               <TableCell>{item.high}</TableCell>
               <TableCell>{item.low}</TableCell>
+              <TableCell>{parseFloat(item.volValue).toFixed(2)}</TableCell>
               <TableCell>{parseFloat(item.vol).toFixed(2)}</TableCell>
             </TableRow>
           ))}
